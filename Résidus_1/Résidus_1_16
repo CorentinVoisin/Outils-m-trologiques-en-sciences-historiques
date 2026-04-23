@@ -1,0 +1,94 @@
+# Analyse des résidus avec arrondi au 1/16 (dactyle)
+
+library(janitor)
+library (ggplot2)
+
+residus_moyens <- function(
+    csv_path,
+    q_min       = 0.1,
+    q_max       = 0.4,
+    q_step      = 0.001,
+    denominateur= 16,
+    digits      = 4,
+    n_pics      = 3,
+    sep         = ";",
+    title       = "Résidu moyen avec arrondi au 1/16",
+    subtitle_auto = TRUE
+) {
+  
+  CSV  <- read.csv(csv_path, header = FALSE, sep = sep)
+  DATA <- data.frame(CSV)[, 1]
+  
+  q  <- seq(q_min, q_max, by = q_step)
+  nq <- length(q)
+  nx <- length(DATA)
+  
+  Q <- matrix(rep(q,    nx), nrow = nx, ncol = nq, byrow = TRUE)
+  X <- matrix(rep(DATA, nq), nrow = nx, ncol = nq, byrow = FALSE)
+  D <- X / Q
+  R <- round_to_fraction(X / Q, denominator = denominateur, digits = digits)
+  K <- colSums(abs(D - R)) / nx
+  
+  DFR <- data.frame(q, K)
+  
+  n         <- nrow(DFR)
+  pics <- (c(FALSE, DFR$K[2:n] < DFR$K[1:(n - 1)]) &
+                  c(DFR$K[1:(n - 1)] < DFR$K[2:n], FALSE))
+  pics_id <- which(pics)
+  
+  if (length(pics_id) < n_pics) {
+    warning("Moins de ", n_pics, " pics trouvés ; ajustez n_pics ou la plage de q.")
+    n_pics <- length(pics_id)
+  }
+  
+  ordre_pics_id   <- pics_id[order(DFR$K[pics_id])][seq_len(n_pics)]
+  ordre_pics       <- DFR[ordre_pics_id, ]
+  ordre_pics$rang  <- paste0("q", seq_len(n_pics), " = ", ordre_pics$q)
+  
+  Kmin <- DFR$q[which.min(DFR$K)]
+  
+
+  old_scipen <- getOption("scipen")
+  on.exit(options(scipen = old_scipen))
+  options(scipen = 999)
+  
+  sub_text <- if (subtitle_auto) {
+    paste(paste0("q", seq_len(n_pics), " = ", ordre_pics$q), collapse = "   ")
+  } else {
+    ""
+  }
+  
+  p <- ggplot(DFR, aes(x = q, y = K)) +
+    geom_line(color = "bisque", linewidth = 0.6) +
+    geom_area(fill = "white", alpha = 0.20) +
+    geom_vline(xintercept = Kmin, color = "red",
+                        linetype = "dashed", linewidth = 0.7) +
+    geom_point(data = ordre_pics[1, ],
+                        aes(x = q, y = K),
+                        color = "red", size = 2.5) +
+    ggrepel::geom_label_repel(data          = ordre_pics,
+                              aes(x = q, y = K, label = rang),
+                              vjust         =  1, hjust = 0.5,
+                              nudge_x       =  0, nudge_y = 0,
+                              size          =  3, color = "black",
+                              box.padding   =  0.4, point.padding = 0.3,
+                              segment.color = "grey60") +
+    labs(title    = title,
+                  subtitle = sub_text,
+                  x        = "q (en m)",
+                  y        = "résidu moyen") +
+    theme_dark()
+  
+  if (n_pics > 1) {
+    p <- p +
+      geom_vline(data = ordre_pics[-1, ],
+                          aes(xintercept = q),
+                          color = "orange", linetype = "dotted", linewidth = 0.5) +
+      geom_point(data = ordre_pics[-1, ],
+                          aes(x = q, y = K),
+                          color = "orange", size = 2.5)
+  }
+  
+  print(p)
+
+}
