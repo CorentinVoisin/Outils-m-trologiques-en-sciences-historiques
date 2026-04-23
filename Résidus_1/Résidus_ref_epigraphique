@@ -1,0 +1,100 @@
+# Analyse des résidus avec référence épigraphique ou textuelle
+
+library(ggplot2)
+library(DescTools)
+library(stats)
+
+residus_moyens_ref <- function(
+    csv_path,
+    q_min      = 0.10,
+    q_max      = 0.40,
+    q_step     = 0.0005,
+    iterations = 2000,
+    N_mesures  = 21,
+    intervalle = 0.95,
+    sep        = ";",
+    title      = "Résidus moyens avec référence épigraphique ou textuelle"
+) {
+  
+  V     <- data.frame(read.csv(csv_path, header = FALSE, sep = sep))
+  DATA  <- V[, 1]
+  DATA2 <- V[, 2]
+  nx    <- length(DATA)
+  
+  q  <- seq(q_min, q_max, by = q_step)
+  nq <- length(q)
+  
+  Q       <- matrix(rep(q,    nx), nrow = nx, ncol = nq, byrow = TRUE)
+  X       <- matrix(rep(DATA, nq), nrow = nx, ncol = nq, byrow = FALSE)
+  DFmean  <- colMeans((X / Q) - DATA2)
+  DFmean  <- data.frame(Q = q, moyenne = DFmean)
+  
+  Rmin      <- Closest(DFmean$moyenne, 0, which = FALSE, na.rm = FALSE)
+  Num_Qmin  <- which(DFmean$moyenne == Rmin)
+  Qmin      <- DFmean$Q[Num_Qmin]
+
+  Plot_residus <- ggplot(DFmean, aes(x = Q, y = moyenne)) +
+    geom_line(color = "bisque", linewidth = 0.8) +
+    geom_vline(aes(xintercept = Qmin),
+                        color = "red", linetype = "dashed", linewidth = 0.7) +
+    geom_hline(aes(yintercept = 0), color = "red") +
+    geom_area(fill = "white", alpha = 0.25) +
+    annotate("text",
+                      x      = Qmin + 0.025,
+                      y      = max(DFmean$moyenne) + 0.01,
+                      size   = 4, family = "serif",
+                      label  = stringr::str_glue("q = {Qmin} m"),
+                      color  = "white") +
+    labs(title = title, x = "q (en m)", y = "résidu moyen") +
+    theme_dark()
+  
+  print(Plot_residus)
+  
+  set.seed(N_mesures)
+  qmin_iterations <- numeric(N_mesures)
+  
+  for (i in seq_len(N_mesures)) {
+    idx       <- sample(seq_len(nx), nx, replace = TRUE)
+    DATA_b    <- DATA[idx]
+    DATA2_b   <- DATA2[idx]
+    X_b       <- matrix(rep(DATA_b, nq), nrow = nx, ncol = nq, byrow = FALSE)
+    DFmean_b  <- colMeans((X_b / Q) - DATA2_b)
+    Rmin_b    <- Closest(DFmean_b, 0, which = FALSE)
+    qmin_iterations[i] <- q[which(DFmean_b == Rmin_b)[1]]
+  }
+  
+  alpha <- 1 - intervalle
+  SIGMA    <- quantile(qmin_iterations, c(alpha / 2, 1 - alpha / 2))
+  
+  # ── Histogramme bootstrap ─────────────────────────────────────────────────────
+  iterations_df <- data.frame(qmin = qmin_iterations)
+  
+  Plot_histogramme <- ggplot(iterations_df, aes(x = qmin)) +
+    geom_histogram(bins = 30, fill = "steelblue", color = "white") +
+    geom_vline(xintercept = Qmin,
+                        color = "red", linewidth = 1, linetype = "dashed") +
+    geom_vline(xintercept = SIGMA,
+                        color = "orange", linewidth = 0.8, linetype = "dotted") +
+    annotate("text",
+                      x = Qmin + (q_max - q_min)*0.01,
+                      y = Inf, vjust = 1.5, size = 3.5, color = "red",
+                      label = stringr::str_glue("q observé = {Qmin} m")) +
+    annotate("text",
+                      x = SIGMA[1], y = Inf, vjust = 4, hjust = 1.1,
+                      size = 3, color = "orange",
+                      label = stringr::str_glue("{round(SIGMA[1], 4)}")) +
+    annotate("text",
+                      x = SIGMA[2], y = Inf, vjust = 4, hjust = -0.1,
+                      size = 3, color = "orange",
+                      label = stringr::str_glue("{round(SIGMA[2], 4)}")) +
+    labs(
+      title    = "Distribution bootstrap de q minimal",
+      subtitle = stringr::str_glue(
+        "IC {intervalle*100}% : [{round(SIGMA[1],4)} ; {round(SIGMA[2],4)}] m"),
+      x = "q (m)", y = "Fréquence") +
+    theme_dark()
+  
+  print(Plot_histogramme)
+  
+}
+residus_moyens_ref('C:/Users/coren/OneDrive/Documents/Test_Pakkanen.csv')
