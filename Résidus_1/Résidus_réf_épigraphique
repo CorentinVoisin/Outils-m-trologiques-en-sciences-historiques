@@ -66,7 +66,6 @@ residus_moyens_ref <- function(
   alpha <- 1 - intervalle
   SIGMA    <- quantile(qmin_iterations, c(alpha / 2, 1 - alpha / 2))
   
-  # ── Histogramme bootstrap ─────────────────────────────────────────────────────
   iterations_df <- data.frame(qmin = qmin_iterations)
   
   Plot_histogramme <- ggplot(iterations_df, aes(x = qmin)) +
@@ -97,4 +96,3 @@ residus_moyens_ref <- function(
   print(Plot_histogramme)
   
 }
-residus_moyens_ref('C:/Users/coren/OneDrive/Documents/Test_Pakkanen.csv')
