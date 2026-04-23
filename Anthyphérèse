@@ -1,0 +1,32 @@
+# ── Anthyphérèse pour le calcul des coordinations dimensionnelles entre éléments architecturaux
+Antipherese <- function(a, b){
+  Red1 <- (a+b)*0.01
+  k <- c()
+  while( b != 0 ){
+    Q <- a%/%b
+    R <- a%%b
+    if (Q!=0){ 
+      print(Q)
+      k <- c(k,Q)
+    }
+    for (i in 1:length(k)) {
+      if (i==1){
+        M1 <- matrix(data=c(k[i],1,1,0), ncol=2, nrow=2, byrow=TRUE)
+      }
+      else{
+        M2 <- matrix(data=c(k[i],1,1,0), ncol=2, nrow=2, byrow=TRUE)
+        M1 <- M1 %*% M2
+      }
+    }
+    print(M1)
+    Red2 <- (M1[1,2] + M1[2,2])
+    Red <- Red1/Red2
+    print(Red)
+    a <- b
+    b <- R
+    if(b==0){
+      print("_______________________________________________")
+    }
+  }
+  return(a)
+}
