@@ -1,0 +1,78 @@
+# - Test de Rayleigh
+
+library(ggpubr)
+library(DescTools)
+library(ggrepel)
+library(ggplot2)
+
+Test_Rayleigh <- function(chemin_csv, rows = 1:21, col = 1,
+                          q_start = 0.1, q_end = 0.4, q_step = 0.001,
+                          title = "Test de Rayleigh",
+                          subtitle_auto = TRUE) {
+  
+  CSV  <- read.csv(chemin_csv, header = FALSE, sep = ";")
+  V    <- data.frame(CSV)
+  DATA <- V[rows, col]
+  
+  old_scipen <- getOption("scipen")
+  on.exit(options(scipen = old_scipen))
+  options(scipen = 999)
+  
+  q  <- seq(q_start, q_end, by = q_step)
+  nq <- length(q)
+  nx <- length(DATA)
+  
+  Q     <- matrix(rep(q,    nx), nrow = nx, ncol = nq, byrow = TRUE)
+  X     <- matrix(rep(DATA, nq), nrow = nx, ncol = nq, byrow = FALSE)
+  theta <- 2 * pi * (X %% Q) / Q
+  C     <- colSums(cos(theta))
+  S     <- colSums(sin(theta))
+  R     <- sqrt(C^2 + S^2) / nx
+  
+  DFR      <- data.frame(Q = q, Rayleigh = R)
+  Num_Rmax <- which.max(DFR[, 2])
+  Rmax     <- DFR$Q[Num_Rmax]
+  
+  n        <- length(DFR$Rayleigh)
+  pics  <- (c(FALSE, DFR$Rayleigh[2:n] > DFR$Rayleigh[1:(n-1)]) &
+                 c(DFR$Rayleigh[1:(n-1)] > DFR$Rayleigh[2:n], FALSE))
+  pics_id <- which(pics)
+  top3_id <- pics_id[order(DFR$Rayleigh[pics_id], decreasing = TRUE)][1:3]
+  top3     <- DFR[top3_id, ]
+  top3$rang <- paste0("q", 1:3, " = ", top3$Q)
+  
+  P1 <- round(exp(-nx * top3$Rayleigh[1]^2), 6)
+  P2 <- round(exp(-nx * top3$Rayleigh[2]^2), 6)
+  P3 <- round(exp(-nx * top3$Rayleigh[3]^2), 6)
+  
+  sub <- if (subtitle_auto) {
+    bquote(p[1] == .(P1) ~ "   " ~
+             p[2] == .(P2) ~ "   " ~
+             p[3] == .(P3))
+  } else {
+    NULL
+  }
+  
+  plot0 <- ggplot(DFR, aes(x = Q, y = Rayleigh)) +
+    geom_line(color = "bisque", linewidth = 0.6) +
+    geom_bar(stat = "identity", width = 0.000001, fill = "bisque") +
+    geom_vline(xintercept = Rmax, color = "red",
+               linetype = "dashed", linewidth = 0.7) +
+    geom_vline(data = top3[-1, ],
+               aes(xintercept = Q), color = "orange",
+               linetype = "dotted", linewidth = 0.7) +
+    geom_label_repel(data  = top3,
+                     aes(x = Q, y = Rayleigh, label = rang),
+                     vjust   = 1, hjust = 0.5,
+                     nudge_x = -0.05, nudge_y = -0.01,
+                     size    = 3, color = "black") +
+    geom_area(fill = "white", alpha = 0.25) +
+    labs(title    = title,
+         subtitle = sub,
+         x = "q (en cm)",
+         y = "R") +
+    theme_dark()
+  
+  print(plot0)
+  
+}
