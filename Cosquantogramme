@@ -1,0 +1,120 @@
+# - Cosquantogramme de Kendall
+
+library(progress)
+library(ggplot2)
+
+cosquantogramme <- function(
+    filepath,
+    rows       = 1:21,
+    col        = 1,
+    q_start    = 0.1,
+    q_end      = 0.4,
+    q_step     = 0.001,
+    n_mc       = 2000,
+    fenêtre_q  = 0.02,
+    sd_bruit   = 0.01,
+    seed       = 21,
+    title_cosq = "Cosquantogramme : Érechthéion (d'après les données de Pakkanen 2007)"
+) {
+  
+  CSV  <- read.csv(filepath, header = FALSE, sep = ";")
+  V    <- data.frame(CSV)
+  DATA <- V[rows, col]
+  
+  q   <- seq(q_start, q_end, by = q_step)
+  nq  <- length(q)
+  nx  <- length(DATA)
+  
+  Q   <- matrix(rep(q,    nx), nrow = nx, ncol = nq, byrow = TRUE)
+  X   <- matrix(rep(DATA, nq), nrow = nx, ncol = nq, byrow = FALSE)
+  Xr  <- X %% Q
+  phi <- sqrt(2 / nx) * colSums(cos(2 * pi * Xr / Q))
+  
+  DF      <- data.frame(q, phi)
+  PHImax  <- which.max(DF$phi)
+  Qmax    <- DF$q[PHImax]
+  
+  n        <- length(phi)
+  pics  <- (c(FALSE, phi[2:n] > phi[1:(n-1)]) &
+              c(phi[1:(n-1)] > phi[2:n], FALSE))
+  pics_id <- which(pics)
+  top3_id <- pics_id[order(phi[pics_id], decreasing = TRUE)][1:3]
+  top3     <- DF[top3_id, ]
+  top3$rang <- paste0("q", 1:3, " = ", top3$q)
+  
+  plot0 <- ggplot(DF, aes(x = q, y = phi)) +
+    geom_line(color = "bisque") +
+    geom_area(fill = "white", alpha = 0.25) +
+    geom_point(data = DF[PHImax, ],
+               aes(x = q, y = phi), color = "red", size = 3) +
+    geom_vline(xintercept = Qmax, color = "red",
+               linetype = "dashed", linewidth = 0.7) +
+    geom_point(data = top3[-1, ],
+               aes(x = q, y = phi), color = "orange", size = 2.5) +
+    geom_vline(data = top3[-1, ],
+               aes(xintercept = q), color = "orange",
+               linetype = "dotted", linewidth = 0.5) +
+    geom_text(data = top3,
+              aes(x = q, y = phi, label = rang),
+              vjust = -0.8, hjust = 0.5, size = 3, color = "white") +
+    labs(title    = title_cosq,
+         subtitle = bquote(q[1] == .(Qmax) ~ "   " ~ q[2] == .(top3$q[2]) ~ "   " ~
+                             q[3] == .(top3$q[3])),
+         x = "q (en m)",
+         y = expression(paste("\U03C6(q)"))) +
+    theme_dark()
+  
+  print(plot0)
+  
+  q_obs <- top3$q[1:2]
+  
+  pic_local <- function(phi_k, q_centre, q_grid, win) {
+    masque <- abs(q_grid - q_centre) <= win
+    if (!any(masque)) return(NA_real_)
+    q_grid[masque][which.max(phi_k[masque])]
+  }
+  
+  set.seed(seed)
+  qmc_1 <- numeric(n_mc)
+  qmc_2 <- numeric(n_mc)
+  
+  cat("\nSimulation Monte Carlo par pic en cours...\n")
+  Barre <- txtProgressBar(min = 0, max = n_mc, style = 3)
+  
+  for (k in 1:n_mc) {
+    DATA_k <- sample(DATA, size = nx, replace = TRUE) +
+      rnorm(nx, mean = 0, sd = sd_bruit)
+    
+    X_k   <- matrix(rep(DATA_k, nq), nrow = nx, ncol = nq, byrow = FALSE)
+    Xr_k  <- X_k %% Q
+    phi_k <- sqrt(2 / nx) * colSums(cos(2 * pi * Xr_k / Q))
+    
+    qmc_1[k] <- pic_local(phi_k, q_obs[1], q, fenêtre_q)
+    qmc_2[k] <- pic_local(phi_k, q_obs[2], q, fenêtre_q)
+    
+    setTxtProgressBar(Barre, k)
+  }
+  close(Barre)
+  
+  stats_pic <- function(vec, q_obs, label) {
+    vec <- vec[!is.na(vec)]
+    SIGMA  <- quantile(vec, c(0.025, 0.975))
+    cat(sprintf("\n  ── %s (q_obs = %.2f mm) ──\n", label, q_obs))
+    cat(sprintf("  n valide       : %d / %d\n",    length(vec), n_mc))
+    cat(sprintf("  Moyenne MC     : %.4f mm\n",    mean(vec)))
+    cat(sprintf("  Médiane MC     : %.4f mm\n",    median(vec)))
+    cat(sprintf("  Écart-type     : %.4f mm\n",    sd(vec)))
+    cat(sprintf("  MAD            : %.4f mm\n",    mad(vec)))
+    cat(sprintf("  IC 95%%         : [%.4f ; %.4f] mm\n", SIGMA[1], SIGMA[2]))
+    list(vec = vec, SIGMA = SIGMA, mean = mean(vec), median = median(vec),
+         sd = sd(vec), mad = mad(vec))
+  }
+  
+  cat("\n═══════════════════════════════════════════════════\n")
+  cat("  RÉSULTATS MONTE CARLO PAR PIC (n =", n_mc, ")\n")
+  cat("═══════════════════════════════════════════════════")
+  s1 <- stats_pic(qmc_1, q_obs[1], "Pic 1 (q1)")
+  s2 <- stats_pic(qmc_2, q_obs[2], "Pic 2 (q2)")
+  cat("═══════════════════════════════════════════════════\n")
+  
+}
